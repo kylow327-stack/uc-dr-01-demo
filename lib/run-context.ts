@@ -1,7 +1,15 @@
 import { randomUUID } from "crypto";
 import { CaseValidationError, parsePastedCase } from "@/lib/case-parse";
 import { loadCase, loadCases, loadPack, loadTaxonomy } from "@/lib/fixtures";
-import { advanceRun, applyHitl, applyTimeout, createRun, EngineError, type GraphContext } from "@/lib/graph/engine";
+import {
+  advanceRun,
+  applyHitl,
+  applyTimeout,
+  createRun,
+  EngineError,
+  scoreFromContext,
+  type GraphContext,
+} from "@/lib/graph/engine";
 import { buildNarrative, llmMode } from "@/lib/graph/summarize";
 import type { CaseSummary, RunResponse } from "@/lib/dto";
 import { getPastedCase, getRun, listBreakerViews, savePastedCase, saveRun } from "@/lib/store";
@@ -157,7 +165,16 @@ export function restoreRun(value: unknown): RunResponse {
   if (isRecord(value.quarantine) && value.quarantine.approved !== false) {
     throw new EngineError("Quarantine cannot be stored as an approval.");
   }
-  return responseFor(saveRun(value as unknown as RunState));
+  const stored = value as unknown as RunState;
+  const ctx = contextFor(caseId);
+  const fromTable = scoreFromContext(stored, ctx);
+  if (stored.score && stored.score.tier !== fromTable.tier) {
+    stored.score = fromTable;
+  }
+  if (stored.packet && stored.packet.tier !== fromTable.tier) {
+    throw new EngineError("Packet tier must match the policy table.", 409);
+  }
+  return responseFor(saveRun(stored));
 }
 
 export function isBreakerState(value: unknown): value is BreakerState {
