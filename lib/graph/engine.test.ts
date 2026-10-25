@@ -92,10 +92,22 @@ describe("fixture runs", () => {
     assert.equal(run.narrative?.droppedUncited, 0);
   });
 
-  it("refuses a packet when the policy-table score is missing", async () => {
+  it("writes the policy-table tier when the stored score was replaced", async () => {
     const ctx = context("CASE-2077");
     const waiting = await play("CASE-2077");
-    assert.throws(() => applyHitl({ ...waiting, score: null }, ctx, "approve", null), /policy table/);
+    assert.equal(waiting.score?.tier, "medium");
+    const forged = {
+      ...waiting,
+      score: waiting.score ? { ...waiting.score, tier: "low" as const } : null,
+    };
+    const accepted = applyHitl(forged, ctx, "approve", null);
+    assert.equal(accepted.score?.tier, "medium");
+    assert.equal(accepted.packet?.tier, "medium");
+    assert.equal(accepted.packet?.tierSource, "policy_table");
+    assert.ok(accepted.packet?.policyRowIds.includes("POL-05"));
+    const missing = applyHitl({ ...waiting, score: null }, ctx, "approve", null);
+    assert.equal(missing.packet?.tier, "medium");
+    assert.equal(missing.packet?.tierSource, "policy_table");
   });
 
   it("quarantines a timeout and refuses a later approve", async () => {

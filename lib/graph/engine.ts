@@ -118,6 +118,18 @@ function killForEgress(run: RunState, ctx: GraphContext): RunState {
   });
 }
 
+export function scoreFromContext(run: RunState, ctx: GraphContext): ScoreResult {
+  const completeness = run.completeness ?? checkCompleteness(ctx.caseFile, ctx.pack, ctx.taxonomyIds);
+  return scoreCase({
+    unknownTypeCount: completeness.unknownTypes.length,
+    lowConfidenceCount: completeness.lowConfidenceFields.length,
+    identityConflict: ctx.caseFile.identityConflict,
+    elevatedIndicators: ctx.caseFile.elevatedIndicators,
+    complete: completeness.complete,
+    breakers: ctx.breakers,
+  });
+}
+
 function policyScore(run: RunState): ScoreResult {
   if (!run.score || run.score.tierSource !== "policy_table") {
     throw new EngineError("A packet requires a tier from the policy table.", 409);
@@ -370,15 +382,7 @@ async function advanceOne(run: RunState, ctx: GraphContext): Promise<{ run: RunS
   }
 
   if (step === 5) {
-    const completeness = run.completeness ?? checkCompleteness(ctx.caseFile, ctx.pack, ctx.taxonomyIds);
-    const score = scoreCase({
-      unknownTypeCount: completeness.unknownTypes.length,
-      lowConfidenceCount: completeness.lowConfidenceFields.length,
-      identityConflict: ctx.caseFile.identityConflict,
-      elevatedIndicators: ctx.caseFile.elevatedIndicators,
-      complete: completeness.complete,
-      breakers: ctx.breakers,
-    });
+    const score = scoreFromContext(run, ctx);
     const node: NodeRecord = {
       nodeId: "score_and_route",
       controls: ["CP-SCORE"],
@@ -400,15 +404,7 @@ async function advanceOne(run: RunState, ctx: GraphContext): Promise<{ run: RunS
   }
 
   if (step === 6) {
-    const completeness = run.completeness ?? checkCompleteness(ctx.caseFile, ctx.pack, ctx.taxonomyIds);
-    const score = scoreCase({
-      unknownTypeCount: completeness.unknownTypes.length,
-      lowConfidenceCount: completeness.lowConfidenceFields.length,
-      identityConflict: ctx.caseFile.identityConflict,
-      elevatedIndicators: ctx.caseFile.elevatedIndicators,
-      complete: completeness.complete,
-      breakers: ctx.breakers,
-    });
+    const score = scoreFromContext(run, ctx);
     const scoreNode: NodeRecord = {
       nodeId: "score_and_route",
       controls: ["CP-SCORE"],
@@ -581,17 +577,19 @@ export function applyHitl(
     });
   }
 
+  const score = scoreFromContext(run, ctx);
   const accepted: NodeRecord = {
     nodeId: "hitl_interrupt",
     controls: ["CP-HITL"],
     status: "passed",
     title: "Analyst accepted the packet",
     detail: "Analyst acceptance records the flag packet. It does not clear a regulatory obligation.",
-    payload: { kind: "hitl", reasons: run.score?.reasons ?? [] },
+    payload: { kind: "hitl", reasons: score.reasons },
     at,
   };
   const withNote: RunState = {
     ...run,
+    score,
     nodes: upsertNode(run.nodes, accepted),
     hitl: { action: "approve", note: trimmed ?? run.hitl.note, at, analystAcceptedPacket: true },
   };
