@@ -1,0 +1,27 @@
+{
+  "name": "uc-dr-01-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clickable interview demo of the UC-DR-01 document completeness and risk-flagging operating model. Fixture-driven. Not a live bank system.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "tsx --test lib/policy/*.test.ts lib/graph/*.test.ts"
+  },
+  "dependencies": {
+    "next": "^15.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
