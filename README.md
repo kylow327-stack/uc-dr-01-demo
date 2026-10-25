@@ -27,12 +27,57 @@ Open [http://localhost:3000](http://localhost:3000).
 
 The default path is fixtures only. No API key is required.
 
-## Demo script (about three minutes)
+## Demo script (about four minutes)
 
 1. **Case board (20s).** Read the footer disclaimer. The breaker strip starts from the illustrative design states: five closed, `CB-CONFIDENCE` half-open. Half-open does not turn the soft path off. The example signals do not change when you click; the click only cycles the demo state.
 2. **Soft path (60s).** Run `CASE-2041`. Use **Step node** through intake (`CP-INTAKE`), classify (`CP-CLS`), extract (`CP-EXT`), completeness (`CP-GAP`, `CP-HOOK`), and the grounded summary (`CP-LLM`). Point at the citation ids. The summary does not choose the tier. **Run to decision** finishes score (`CP-SCORE`) and the simulated write. Open **SoR packet**. The navy panel says the flag does not clear the obligation, and `clearsRegulatoryObligation = false`.
 3. **HITL and timeout (50s).** Back to the board. Run `CASE-2077` with **Run to decision**. Open **HITL interrupt**. The gap list shows a missing proof of address and a missing passport expiry. Tier is medium from `POL-05`. Click **Simulate timeout**. The result is quarantine, `approved = false`, and no packet. On a second run of the same folder you can instead Approve, Edit, Reject, or Escalate. Approve writes an analyst-accepted packet that is still non-clearing. Edit alone does not write.
 4. **Breakers (40s).** Open any breaker (try `CB-CASE-WRITE`). Run `CASE-2041` again. The soft path is disabled and the case waits at HITL even though the tier stays low. Approve while that breaker is open freezes the write and does not approve. Open `CB-DATA-EGRESS` and step: the run is killed and a simulated security bridge opens. **Reset illustrative states** restores the design defaults. `CASE-2118` is the high tier: a field at 0.62, a name conflict, and a fixture elevated indicator (`POL-02`, `POL-03`, `POL-04`).
+5. **Paste (40s).** Under **Paste sample case**, load the example template and run it. The route matches the soft path above. Open **SoR packet** for the navy panel and the JSON. To show HITL, delete the proof-of-address document from the template and run again. See [Portal: paste a case](#portal-paste-a-case).
+
+## Portal: paste a case
+
+The case board keeps the three fictional folders. **Paste sample case** accepts JSON in the same shape as `fixtures/cases/`. **Load example template** fills a CASE-2041-shaped pack whose id is `CASE-PASTE`, so the built-in cards stay as they are. A valid paste is stored in server memory and in the browser session, then started through `POST /api/runs`. Step, play, HITL, timeout, and the packet page are the same screens as the demo folders. The packet page shows the readable panel and the JSON.
+
+The tier still comes only from `lib/policy/score.ts`. With no model key, or if the model call fails, the summarize node writes a `fixture_fallback` briefing. A pasted `fixtureNarrative` is kept when every citation is on the extract, a gap, or an indicator. If those citations do not ground, the briefing is built from the pasted fields and gaps. Timeout still quarantines and does not approve. `clearsRegulatoryObligation` stays `false`. Soft path still requires a low tier, a complete pack, and no open breaker.
+
+`caseId` must not be `CASE-2041`, `CASE-2077`, or `CASE-2118`. `folderPath` must be `cases/allow/` plus one segment of letters, numbers, dots, underscores, or hyphens. `profile` is `individual_onboarding` or `sme_onboarding`. `classifiedType` is `passport`, `proof_of_address`, `bank_statement`, `company_registry`, `source_of_funds`, or `unknown`.
+
+```json
+{
+  "caseId": "CASE-PASTE",
+  "folderPath": "cases/allow/CASE-PASTE-sample",
+  "profile": "individual_onboarding",
+  "title": "Pasted sample pack",
+  "demoScript": "Paste · shaped like the low complete pack",
+  "subjectLabel": "Alex Rivera (fictional sample)",
+  "blurb": "Short description shown on the run.",
+  "identityConflict": false,
+  "conflictNote": null,
+  "elevatedIndicators": [],
+  "documents": [
+    {
+      "docId": "DOC-PASSPORT-01",
+      "fileName": "passport-sample.pdf",
+      "classifiedType": "passport",
+      "pages": 1,
+      "fields": [
+        { "id": "full_name", "label": "Full name", "value": "Alex Rivera (fictional sample)", "confidence": 0.98, "page": 1 }
+      ]
+    }
+  ],
+  "fixtureNarrative": {
+    "summary": "Grounded briefing. It does not assign a tier.",
+    "factors": [
+      {
+        "id": "RF-01",
+        "text": "The passport extract has a full name.",
+        "citations": ["cite:CASE-PASTE:DOC-PASSPORT-01:full_name"]
+      }
+    ]
+  }
+}
+```
 
 ## Optional narrative model
 
@@ -90,15 +135,16 @@ The case list includes `CASE-2041`, `CASE-2077`, and `CASE-2118`. The breaker pa
 | Path | What it is |
 | --- | --- |
 | `fixtures/` | Fictional case packs, PACK-v1, taxonomy, illustrative breaker defaults. Statically imported by `lib/fixtures.ts` and included in the Vercel function trace |
+| Paste sample case | Portal intake on the case board. JSON in the fixture shape, then the same run, HITL, and packet pages |
 | `lib/policy/score.ts` | Deterministic tier table (`CP-SCORE`) |
 | `lib/graph/engine.ts` | In-memory LangGraph-shaped steps, HITL, timeout, breaker degrade |
 | `app/api/runs/` | Route handlers: start, step, play, HITL, timeout, restore |
-| `/` | Case board, policy table, controls, illustrative FMEA, gates |
+| `/` | Case board, paste intake, policy table, controls, illustrative FMEA, gates |
 | `/runs/[runId]` | Step-through run view |
-| `/runs/[runId]/packet` | Non-clearing SoR preview |
+| `/runs/[runId]/packet` | Non-clearing SoR preview, readable panel and JSON |
 | `/runs/[runId]/hitl` | Approve / edit / reject / escalate, and timeout → quarantine |
 
-Run state is kept in memory on the server instance. The browser also stores the latest run and breaker states in `sessionStorage` and restores them if the instance is cold.
+Run state is kept in memory on the server instance, along with any pasted case pack. The browser also stores the latest run, the pasted case JSON, and breaker states in `sessionStorage` and restores them if the instance is cold.
 
 ## Not in this prototype
 

@@ -22,22 +22,39 @@ export function useRun(runId: string) {
     }
   }, []);
 
+  const restoreCached = useCallback(async (): Promise<Response | null> => {
+    const cached = sessionStorage.getItem(`ucdr:run:${runId}`);
+    if (!cached) return null;
+    let payload: unknown;
+    try {
+      const run = JSON.parse(cached) as { caseId?: unknown };
+      payload = run;
+      if (typeof run.caseId === "string") {
+        const caseRaw = sessionStorage.getItem(`ucdr:case:${run.caseId}`);
+        if (caseRaw) payload = { run, caseFile: JSON.parse(caseRaw) as unknown };
+      }
+    } catch {
+      return null;
+    }
+    return fetch("/api/runs/restore", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }, [runId]);
+
   const load = useCallback(async () => {
     setPending(true);
     setError(null);
     try {
       let response = await fetch(`/api/runs/${runId}`, { cache: "no-store" });
       if (response.status === 404) {
-        const cached = sessionStorage.getItem(`ucdr:run:${runId}`);
-        if (!cached) {
+        const restored = await restoreCached();
+        if (!restored) {
           throw new Error("This run is not on this server instance. Start the folder again from the case board.");
         }
-        response = await fetch("/api/runs/restore", {
-          method: "POST",
-          cache: "no-store",
-          headers: { "content-type": "application/json" },
-          body: cached,
-        });
+        response = restored;
       }
       const body = (await response.json()) as RunResponse & { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not load the run");
@@ -47,7 +64,7 @@ export function useRun(runId: string) {
     } finally {
       setPending(false);
     }
-  }, [remember, runId]);
+  }, [remember, restoreCached, runId]);
 
   useEffect(() => {
     void load();
@@ -58,11 +75,21 @@ export function useRun(runId: string) {
       setPending(true);
       setError(null);
       try {
-        const response = await fetch(path, {
+        let response = await fetch(path, {
           cache: "no-store",
           ...init,
           headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
         });
+        if (response.status === 404) {
+          const restored = await restoreCached();
+          if (restored?.ok) {
+            response = await fetch(path, {
+              cache: "no-store",
+              ...init,
+              headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+            });
+          }
+        }
         const body = (await response.json()) as RunResponse & { error?: string };
         if (!response.ok) throw new Error(body.error || "Request failed");
         remember(body, body.advanced);
@@ -72,7 +99,7 @@ export function useRun(runId: string) {
         setPending(false);
       }
     },
-    [remember],
+    [remember, restoreCached],
   );
 
   return { run, folder, error, note, pending, act };

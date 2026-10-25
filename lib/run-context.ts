@@ -1,9 +1,10 @@
 import { randomUUID } from "crypto";
+import { CaseValidationError, parsePastedCase } from "@/lib/case-parse";
 import { loadCase, loadCases, loadPack, loadTaxonomy } from "@/lib/fixtures";
 import { advanceRun, applyHitl, applyTimeout, createRun, EngineError, type GraphContext } from "@/lib/graph/engine";
 import { buildNarrative, llmMode } from "@/lib/graph/summarize";
 import type { CaseSummary, RunResponse } from "@/lib/dto";
-import { getRun, listBreakerViews, saveRun } from "@/lib/store";
+import { getPastedCase, getRun, listBreakerViews, savePastedCase, saveRun } from "@/lib/store";
 import type { BreakerState, CaseFixture, RunPhase, RunState } from "@/lib/types";
 
 const PHASES = new Set<RunPhase>([
@@ -47,8 +48,12 @@ export function listCaseSummaries(): CaseSummary[] {
     .map(summarizeCase);
 }
 
+function resolveCase(caseId: string): CaseFixture | undefined {
+  return getPastedCase(caseId) ?? loadCase(caseId);
+}
+
 function contextFor(caseId: string): GraphContext {
-  const caseFile = loadCase(caseId);
+  const caseFile = resolveCase(caseId);
   if (!caseFile) throw new EngineError(`Unknown case folder ${caseId}`, 404);
   return {
     caseFile,
@@ -60,7 +65,7 @@ function contextFor(caseId: string): GraphContext {
 }
 
 export function responseFor(run: RunState, advanced?: boolean): RunResponse {
-  const caseFile = loadCase(run.caseId);
+  const caseFile = resolveCase(run.caseId);
   if (!caseFile) throw new EngineError(`Unknown case folder ${run.caseId}`, 404);
   return { run, folder: summarizeCase(caseFile), advanced };
 }
@@ -69,6 +74,23 @@ export function startRun(caseId: string): RunResponse {
   const ctx = contextFor(caseId);
   const run = saveRun(createRun(caseId, `run_${randomUUID()}`));
   return responseFor(run);
+}
+
+export function startPastedRun(raw: unknown): RunResponse {
+  const parsed = parsePastedCase(raw);
+  if (!parsed.ok) throw new CaseValidationError(parsed.errors);
+  savePastedCase(parsed.value);
+  const run = saveRun(createRun(parsed.value.caseId, `run_${randomUUID()}`));
+  return responseFor(run);
+}
+
+export function startFromRequest(body: unknown): RunResponse {
+  if (!isRecord(body)) throw new EngineError("Expected { caseId } or { case }.");
+  if ("case" in body) return startPastedRun(body.case);
+  if (typeof body.caseId !== "string" || body.caseId.trim() === "") {
+    throw new EngineError("caseId is required.");
+  }
+  return startRun(body.caseId);
 }
 
 export async function stepRun(runId: string, mode: "step" | "play"): Promise<RunResponse> {
@@ -103,6 +125,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function restoreRun(value: unknown): RunResponse {
   if (!isRecord(value)) throw new EngineError("Run state is not an object.");
+  let payload = value;
+  if (isRecord(value.run) && "caseFile" in value) {
+    const parsed = parsePastedCase(value.caseFile);
+    if (!parsed.ok) throw new CaseValidationError(parsed.errors);
+    payload = value.run;
+    const caseId = payload.caseId;
+    if (typeof caseId === "string" && parsed.value.caseId !== caseId) {
+      throw new EngineError("caseFile.caseId must match the run.");
+    }
+    savePastedCase(parsed.value);
+  }
+  value = payload;
+  if (!isRecord(value)) throw new EngineError("Run state is not an object.");
   const runId = value.runId;
   const caseId = value.caseId;
   const phase = value.phase;
@@ -115,7 +150,7 @@ export function restoreRun(value: unknown): RunResponse {
   if (!Array.isArray(value.nodes) || !isRecord(value.hitl)) {
     throw new EngineError("Run state is missing nodes or the HITL record.");
   }
-  if (!loadCase(caseId)) throw new EngineError(`Unknown case folder ${caseId}`, 404);
+  if (!resolveCase(caseId)) throw new EngineError(`Unknown case folder ${caseId}`, 404);
   if (isRecord(value.packet) && value.packet.clearsRegulatoryObligation !== false) {
     throw new EngineError("A packet cannot clear a regulatory obligation.");
   }

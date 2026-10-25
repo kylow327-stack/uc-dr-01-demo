@@ -96,6 +96,30 @@ export function PacketView({ runId }: { runId: string }) {
           )}
         </div>
       ) : null}
+
+      {run ? (
+        <div className="mt-6">
+          <p className="font-mono text-[0.68rem] uppercase tracking-[0.08em] text-signal">
+            {packet ? "Packet JSON" : "Decision JSON"}
+          </p>
+          <pre className="mt-2 max-h-[24rem] overflow-auto border border-ink bg-ink p-4 font-mono text-[0.72rem] leading-relaxed text-paper">
+            {JSON.stringify(
+              {
+                caseId: run.caseId,
+                phase: run.phase,
+                tier: run.score?.tier ?? null,
+                route: run.score?.route ?? null,
+                tierSource: run.score?.tierSource ?? null,
+                policyRowIds: run.score?.policyRowIds ?? [],
+                quarantine: run.quarantine,
+                packet,
+              },
+              null,
+              2,
+            )}
+          </pre>
+        </div>
+      ) : null}
     </section>
   );
 }

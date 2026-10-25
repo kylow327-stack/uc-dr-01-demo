@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build && node scripts/assert-fixtures-traced.mjs",
     "start": "next start",
-    "test": "tsx --test lib/policy/*.test.ts lib/graph/*.test.ts lib/fixtures.test.ts"
+    "test": "tsx --test lib/policy/*.test.ts lib/graph/*.test.ts lib/fixtures.test.ts lib/paste.test.ts"
   },
   "dependencies": {
     "next": "^15.5.4",
