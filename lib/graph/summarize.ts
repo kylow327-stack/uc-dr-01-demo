@@ -1,5 +1,7 @@
 import { fieldCitation, groundNarrative, narrativeFromModelJson } from "@/lib/graph/citations";
+import type { NarrativeDraft } from "@/lib/graph/citations";
 import type { SummarizeInput } from "@/lib/graph/engine";
+import { isPastedCase } from "@/lib/store";
 import type { Narrative } from "@/lib/types";
 
 export type LlmMode = "fixture" | "openai" | "azure";
@@ -22,6 +24,71 @@ function fixtureNarrative(input: SummarizeInput, source: "fixture" | "fixture_fa
   return grounded;
 }
 
+function joinNotes(...parts: Array<string | null | undefined>): string | null {
+  const text = parts.filter((part): part is string => typeof part === "string" && part.trim() !== "").join(" ");
+  return text || null;
+}
+
+/** Grounded briefing from the pasted extract and checklist gaps, using the same citation ids the fixture packs use. */
+function draftFromExtract(input: SummarizeInput): NarrativeDraft {
+  const { caseFile, completeness } = input;
+  const factors: Array<{ id: string; text: string; citations: string[] }> = [];
+  for (const doc of caseFile.documents) {
+    for (const field of doc.fields) {
+      if (factors.length >= 6) break;
+      const value = field.value.trim() || "blank";
+      factors.push({
+        id: `RF-EXT-${factors.length + 1}`,
+        text: `${field.label} on ${doc.fileName} is “${value}”.`,
+        citations: [fieldCitation(caseFile.caseId, doc.docId, field.id)],
+      });
+    }
+  }
+  for (const gap of completeness.gaps) {
+    if (factors.length >= 8) break;
+    factors.push({
+      id: `RF-GAP-${factors.length + 1}`,
+      text: gap.message,
+      citations: [gap.citationId],
+    });
+  }
+  if (caseFile.identityConflict && factors.length < 8) {
+    factors.push({
+      id: "RF-CONFLICT",
+      text: caseFile.conflictNote?.trim() || "Identity strings differ in this pasted pack.",
+      citations: [`conflict:${caseFile.caseId}:identity`],
+    });
+  }
+  for (const indicator of caseFile.elevatedIndicators) {
+    if (factors.length >= 8) break;
+    factors.push({
+      id: `RF-IND-${factors.length + 1}`,
+      text: `Fixture elevated indicator ${indicator} is present on this pasted pack.`,
+      citations: [`indicator:${caseFile.caseId}:${indicator}`],
+    });
+  }
+  const gapCount = completeness.gaps.length;
+  return {
+    summary: `Pasted folder ${caseFile.caseId} has ${caseFile.documents.length} document(s) and ${gapCount} checklist gap(s). This briefing cites the extract and the gaps only. It does not assign a risk tier.`,
+    factors,
+  };
+}
+
+function pastedBriefing(input: SummarizeInput, note: string): Narrative {
+  const grounded = groundNarrative(input.caseFile.fixtureNarrative, input.allowedCitations, "fixture_fallback");
+  if (grounded.factors.length > 0) {
+    grounded.note = joinNotes(note, grounded.note);
+    return grounded;
+  }
+  const synthesized = groundNarrative(draftFromExtract(input), input.allowedCitations, "fixture_fallback");
+  synthesized.note = joinNotes(
+    note,
+    "The pasted fixtureNarrative had no grounded factors, so this briefing was built from the extract and the gaps.",
+    synthesized.note,
+  );
+  return synthesized;
+}
+
 export async function buildNarrative(input: SummarizeInput): Promise<Narrative> {
   if (input.suppressLlm) {
     return {
@@ -32,7 +99,14 @@ export async function buildNarrative(input: SummarizeInput): Promise<Narrative> 
       note: "CB-LLM degrade: stop the summarize node.",
     };
   }
+  const pasted = isPastedCase(input.caseFile.caseId);
   if (llmMode() === "fixture") {
+    if (pasted) {
+      return pastedBriefing(
+        input,
+        "No model key is set. The briefing is grounded from this pasted pack. The tier is not set here.",
+      );
+    }
     return fixtureNarrative(input, "fixture", null);
   }
 
@@ -40,6 +114,12 @@ export async function buildNarrative(input: SummarizeInput): Promise<Narrative> 
     const raw = await draftWithModel(input);
     const grounded = narrativeFromModelJson(raw, input.allowedCitations);
     if (grounded.factors.length === 0) {
+      if (pasted) {
+        return pastedBriefing(
+          input,
+          "The model returned no grounded factors. The pasted briefing was kept. Any tier in the model payload was ignored.",
+        );
+      }
       return fixtureNarrative(
         input,
         "fixture_fallback",
@@ -48,6 +128,12 @@ export async function buildNarrative(input: SummarizeInput): Promise<Narrative> 
     }
     return grounded;
   } catch {
+    if (pasted) {
+      return pastedBriefing(
+        input,
+        "The model call failed. The pasted briefing was kept. The tier was not taken from the model.",
+      );
+    }
     return fixtureNarrative(
       input,
       "fixture_fallback",

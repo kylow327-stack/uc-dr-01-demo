@@ -1,9 +1,10 @@
 import { loadBreakerFile } from "@/lib/fixtures";
-import type { BreakerDef, BreakerState, RunState } from "@/lib/types";
+import type { BreakerDef, BreakerState, CaseFixture, RunState } from "@/lib/types";
 
 interface Memory {
   runs: Map<string, RunState>;
   breakers: Map<string, BreakerState>;
+  pastedCases: Map<string, CaseFixture>;
 }
 
 const globalStore = globalThis as typeof globalThis & { __ucdr01?: Memory };
@@ -14,9 +15,23 @@ function memory(): Memory {
     globalStore.__ucdr01 = {
       runs: new Map(),
       breakers: new Map(defs.breakers.map((breaker) => [breaker.id, breaker.defaultState])),
+      pastedCases: new Map(),
     };
   }
+  if (!globalStore.__ucdr01.pastedCases) globalStore.__ucdr01.pastedCases = new Map();
   return globalStore.__ucdr01;
+}
+
+export function savePastedCase(caseFile: CaseFixture): void {
+  memory().pastedCases.set(caseFile.caseId, caseFile);
+}
+
+export function getPastedCase(caseId: string): CaseFixture | undefined {
+  return memory().pastedCases.get(caseId);
+}
+
+export function isPastedCase(caseId: string): boolean {
+  return memory().pastedCases.has(caseId);
 }
 
 export function listBreakerViews(): Array<BreakerDef & { state: BreakerState }> {

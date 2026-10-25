@@ -253,6 +253,16 @@ export function RunView({ runId }: { runId: string }) {
         </Link>
       </div>
 
+      {run?.score ? (
+        <p className="mt-4 border border-navy bg-stone px-3 py-2 text-sm">
+          <span className="font-mono text-[0.68rem] uppercase tracking-[0.08em] text-navy">Decision</span>
+          {" · "}
+          {phaseLabel(run.phase)} · tier {run.score.tier} · route {run.score.route} · source {run.score.tierSource}
+          {run.phase === "quarantine" ? " · not approved" : ""}
+          {run.packet ? " · clearsRegulatoryObligation false" : ""}
+        </p>
+      ) : null}
+
       <div className="mt-6 grid gap-4 lg:grid-cols-[16rem_1fr]">
         <ol className="space-y-2">
           {NODE_PLAN.filter((item) => item.nodeId !== "egress_kill").map((item) => {
