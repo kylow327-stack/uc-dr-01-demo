@@ -92,6 +92,12 @@ describe("fixture runs", () => {
     assert.equal(run.narrative?.droppedUncited, 0);
   });
 
+  it("refuses a packet when the policy-table score is missing", async () => {
+    const ctx = context("CASE-2077");
+    const waiting = await play("CASE-2077");
+    assert.throws(() => applyHitl({ ...waiting, score: null }, ctx, "approve", null), /policy table/);
+  });
+
   it("quarantines a timeout and refuses a later approve", async () => {
     const ctx = context("CASE-2077");
     const waiting = await play("CASE-2077");

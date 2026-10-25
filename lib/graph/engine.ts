@@ -10,6 +10,7 @@ import type {
   PackV1,
   RunPhase,
   RunState,
+  ScoreResult,
   SorDisposition,
   SorPacket,
 } from "@/lib/types";
@@ -117,7 +118,15 @@ function killForEgress(run: RunState, ctx: GraphContext): RunState {
   });
 }
 
+function policyScore(run: RunState): ScoreResult {
+  if (!run.score || run.score.tierSource !== "policy_table") {
+    throw new EngineError("A packet requires a tier from the policy table.", 409);
+  }
+  return run.score;
+}
+
 function buildPacket(run: RunState, ctx: GraphContext, disposition: SorDisposition): SorPacket {
+  const score = policyScore(run);
   return {
     packetId: `pkt_${run.caseId}_${run.runId}`,
     auditId: `aud_${run.runId.replace(/^run_/, "")}`,
@@ -125,8 +134,8 @@ function buildPacket(run: RunState, ctx: GraphContext, disposition: SorDispositi
     runId: run.runId,
     disposition,
     clearsRegulatoryObligation: false,
-    tier: run.score?.tier ?? "low",
-    policyRowIds: run.score?.policyRowIds ?? [],
+    tier: score.tier,
+    policyRowIds: score.policyRowIds,
     tierSource: "policy_table",
     narrative: run.narrative,
     analystNote: run.hitl.note,
