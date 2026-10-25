@@ -5,9 +5,9 @@
   "description": "Clickable interview demo of the UC-DR-01 document completeness and risk-flagging operating model. Fixture-driven. Not a live bank system.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/assert-fixtures-traced.mjs",
     "start": "next start",
-    "test": "tsx --test lib/policy/*.test.ts lib/graph/*.test.ts"
+    "test": "tsx --test lib/policy/*.test.ts lib/graph/*.test.ts lib/fixtures.test.ts"
   },
   "dependencies": {
     "next": "^15.5.4",

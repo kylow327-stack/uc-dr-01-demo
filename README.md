@@ -23,7 +23,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-`npm run build` then `npm start` serves the production build.
+`npm run build` then `npm start` serves the production build. The build also checks that every `fixtures/**/*.json` file is in each `/api` function trace and that the case, pack, and breaker payloads are inlined in the server bundles. See [Live URL](#live-url) for the `POST /api/runs` check against that production server.
 
 The default path is fixtures only. No API key is required.
 
@@ -48,24 +48,48 @@ Do not point this public demo at real customer documents or live case folders, e
 
 Route handlers need a Node host. GitHub Pages cannot run them.
 
-This copy was not deployed: the build environment had no Vercel token. To publish:
+Production is already deployed:
 
-1. Merge this branch so `main` contains the app.
-2. Import the GitHub repo at [vercel.com/new](https://vercel.com/new). Framework preset: Next.js. `vercel.json` already sets that.
-3. Leave environment variables empty for the fixture path. Deploy.
-4. The URL Vercel assigns is the live demo. Optional model keys belong in the Vercel project settings, not in git.
+- https://uc-dr-01-demo-rick-13ff.vercel.app
+- https://uc-dr-01-demo.vercel.app
 
-Local check before you import:
+Redeploy after this fix lands on `main`. The previous production build answered `POST /api/runs` with `ENOENT` for `/var/task/fixtures/pack-v1.json`, and the breaker strip failed the same way. `lib/fixtures.ts` now statically imports every fixture, so Webpack inlines the JSON into the Node server bundle. `outputFileTracingIncludes` in `next.config.ts` also copies `./fixtures/**/*.json` onto every server function (`/**`, which covers `/api/**` and `/runs/**`). A cold start can read the payload from the bundle even when the function filesystem has not been traced.
+
+Leave environment variables empty for the fixture path. No API key is required. Optional model keys belong in the Vercel project settings, not in git.
+
+### Verify `POST /api/runs` locally after the production build
 
 ```bash
-npm install && npm test && npm run build
+npm install
+npm test
+npm run build
+npm start
 ```
+
+`npm run build` exits non-zero if an API route trace is missing a fixture file, or if the runs, cases, or breakers bundles do not contain the inlined fixture text.
+
+In a second shell, against that production server:
+
+```bash
+curl -sS -X POST http://localhost:3000/api/runs \
+  -H 'content-type: application/json' \
+  -d '{"caseId":"CASE-2041"}'
+```
+
+A working build returns a JSON run for `CASE-2041` with `phase` `ready`. Then:
+
+```bash
+curl -sS http://localhost:3000/api/cases
+curl -sS http://localhost:3000/api/breakers
+```
+
+The case list includes `CASE-2041`, `CASE-2077`, and `CASE-2118`. The breaker payload includes the six illustrative breakers, with `CB-CONFIDENCE` half-open.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
-| `fixtures/` | Fictional case packs, PACK-v1, taxonomy, illustrative breaker defaults |
+| `fixtures/` | Fictional case packs, PACK-v1, taxonomy, illustrative breaker defaults. Statically imported by `lib/fixtures.ts` and included in the Vercel function trace |
 | `lib/policy/score.ts` | Deterministic tier table (`CP-SCORE`) |
 | `lib/graph/engine.ts` | In-memory LangGraph-shaped steps, HITL, timeout, breaker degrade |
 | `app/api/runs/` | Route handlers: start, step, play, HITL, timeout, restore |
